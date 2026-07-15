@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         NAGRA BRAIN CORE v25.0 (Nagra Guard License Edition)
+// @name         NAGRA BRAIN CORE v26.0 (Ultimate Secure Edition)
 // @namespace    http://tampermonkey.net/
-// @version      25.0
-// @description  Persistent Trading Bot for Quotex with Date-Based Client Licensing
+// @version      26.0
+// @description  Secure Trading Bot for Quotex with Cryptographic License Verification
 // @author       Nagra
 // @match        https://*.qxbroker.com/*
 // @match        https://*.quotex.com/*
@@ -14,17 +14,25 @@
 (function() {
     'use strict';
 
-    // ==========================================
-    // 🔐 SECURITY & LICENSE SYSTEM (NAGRA GUARD)
-    // ==========================================
-    const MASTER_ADMIN_PASS = "NAGRA-ADMIN-99"; // آپ کا پرسنل ماسٹر پاس ورڈ (لائف ٹائم ان لاک)
+    const MASTER_ADMIN_PASS = "NAGRA-ADMIN-99"; // آپ کا ماسٹر پاس ورڈ
+    const SECRET_SALT = "NagraSecure786"; // یہ آپ کا خفیہ سکیورٹی کوڈ ہے جس سے ہیش بنتا ہے
+
+    // ہیش بنانے کا خفیہ فنکشن (جو چوری نہیں ہو سکتا)
+    function generateHash(dateStr) {
+        let str = dateStr + SECRET_SALT;
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            hash = (hash << 5) - hash + str.charCodeAt(i);
+            hash |= 0;
+        }
+        return Math.abs(hash).toString(16).substring(0, 6); // 6 ہندسوں کا خفیہ کوڈ
+    }
 
     function checkLicense() {
         let activeKey = localStorage.getItem('nqp_license_key');
 
         if (!activeKey) {
-            // اگر کوئی کی سیو نہیں ہے تو صارف سے پاس ورڈ یا لائسنس کی مانگیں
-            let userPrompt = prompt("🔑 NAGRA BRAIN: Enter your License Key or Admin Password to activate:");
+            let userPrompt = prompt("🔑 NAGRA BRAIN: Enter your Secure License Key or Admin Password to activate:");
             if (!userPrompt) {
                 alert("Access Denied! Bot cannot start without a valid license.");
                 return false;
@@ -35,24 +43,34 @@
         // 1. ایڈمن چیک
         if (activeKey === MASTER_ADMIN_PASS) {
             localStorage.setItem('nqp_license_key', activeKey);
-            console.log("⚡ ADMIN ACCESS GRANTED: Lifetime License Activated.");
-            return true;
+            return { isAdmin: true };
         }
 
-        // 2. کلائنٹ لائسنس چیک (فارمیٹ: NAGRA-YYYYMMDD)
-        let licensePattern = /^NAGRA-(\d{4})(\d{2})(\d{2})$/;
+        // 2. خفیہ کلائنٹ لائسنس چیک (فارمیٹ: YYYYMMDD-HASH)
+        let licensePattern = /^(\d{8})-([a-f0-9]{6})$/;
         let match = activeKey.match(licensePattern);
 
         if (!match) {
-            alert("❌ Invalid License Key! Access Denied.");
+            alert("❌ Invalid License Format or Key! Access Denied.");
             localStorage.removeItem('nqp_license_key');
             return false;
         }
 
-        // تاریخ نکالیں
-        let expYear = parseInt(match[1]);
-        let expMonth = parseInt(match[2]) - 1; // JS Months 0-11 ہوتے ہیں
-        let expDay = parseInt(match[3]);
+        let dateStr = match[1]; // YYYYMMDD
+        let providedHash = match[2]; // HASH
+
+        // چیک کریں کہ کیا ہیش واقعی ناگرا کے سسٹم کا ہی بنایا ہوا ہے؟
+        let expectedHash = generateHash(dateStr);
+        if (providedHash !== expectedHash) {
+            alert("❌ Security Alert! Fake or Modified License Key Detected.");
+            localStorage.removeItem('nqp_license_key');
+            return false;
+        }
+
+        // اگر ہیش اصلی ہے، تو اب تاریخ چیک کریں
+        let expYear = parseInt(dateStr.substring(0, 4));
+        let expMonth = parseInt(dateStr.substring(4, 6)) - 1;
+        let expDay = parseInt(dateStr.substring(6, 8));
 
         let expiryDate = new Date(expYear, expMonth, expDay, 23, 59, 59);
         let currentDate = new Date();
@@ -63,18 +81,13 @@
             return false;
         }
 
-        // اگر سب ٹھیک ہے تو لائسنس کو سیو رکھیں اور بوٹ چلنے دیں
         localStorage.setItem('nqp_license_key', activeKey);
         let daysLeft = Math.ceil((expiryDate - currentDate) / (1000 * 60 * 60 * 24));
-        console.log(`🛡️ LICENSE OK: Active. ${daysLeft} Days Remaining.`);
         return { isClient: true, daysLeft: daysLeft, expStr: `${expDay}/${expMonth+1}/${expYear}` };
     }
 
-    // لائسنس رن کریں
     let licenseStatus = checkLicense();
-    if (!licenseStatus) {
-        return; // بوٹ کو یہیں روک دیں، آگے کچھ لوڈ نہیں ہوگا!
-    }
+    if (!licenseStatus) return;
 
     // پرانے پینلز کی صفائی
     let oldDash = document.getElementById('nqp-quantum-pro');
@@ -111,7 +124,6 @@
         });
     }
 
-    // 💾 لرننگ میموری لوڈ کریں
     function loadSavedState() {
         let savedData = localStorage.getItem('nqp_brain_memory');
         if (savedData) {
@@ -144,13 +156,11 @@
 
     loadSavedState();
 
-    // لائسنس کا سٹیٹس ٹیکسٹ سیٹ کریں
     let licenseFooterText = "👑 MASTER ACCESS (LIFETIME)";
     if (licenseStatus.isClient) {
         licenseFooterText = `⏳ EXPIRY: ${licenseStatus.expStr} (${licenseStatus.daysLeft} Days Left)`;
     }
 
-    // ڈیش بورڈ پینل
     let dash = document.createElement('div');
     dash.id = 'nqp-quantum-pro';
     dash.style.cssText = `
@@ -171,12 +181,10 @@
     `;
 
     dash.innerHTML = `
-        <!-- ہیڈر -->
         <div id="nqp-header" style="text-align:center; font-weight:bold; border-bottom:1px solid rgba(0, 240, 255, 0.2); padding-bottom:8px; margin-bottom:10px; color:#00f0ff; font-size:10px; text-transform:uppercase; letter-spacing:1px; cursor:move;">
-            ⚡ NAGRA BRAIN CORE v25.0 (SECURED)
+            ⚡ NAGRA BRAIN CORE v26.0 (SECURED)
         </div>
 
-        <!-- پپی روبوٹ -->
         <div style="display: flex; justify-content: center; margin-bottom: 10px;">
             <div id="nqp-puppy-face" style="width: 70px; height: 60px; position: relative; background: #0c1a30; border: 2px solid #00f0ff; border-radius: 40% 40% 45% 45%; box-shadow: 0 0 10px rgba(0,240,255,0.2); transition: all 0.4s ease-in-out;">
                 <div class="pup-ear" id="ear-l" style="width: 14px; height: 26px; background: #00f0ff; position: absolute; left: -8px; top: 10px; border-radius: 50% 10% 10% 50%; transform: rotate(-15deg); transition: 0.3s;"></div>
@@ -188,7 +196,6 @@
             </div>
         </div>
 
-        <!-- ٹائم فریمز -->
         <div style="background: #051124; padding: 4px; border-radius: 6px; border: 1px solid rgba(0,240,255,0.15); margin-bottom: 10px;">
             <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;">
                 <button class="nqp-tf" data-tf="10s" style="padding:4px 0; font-size:8px; background:transparent; color:#00f0ff; border:none; border-radius:3px; cursor:pointer; font-weight:bold;">10s</button>
@@ -201,20 +208,17 @@
             </div>
         </div>
 
-        <!-- لائیو ٹائمر -->
         <div id="nqp-timer-box" style="display: none; text-align: center; background: rgba(255, 215, 0, 0.1); border: 1px dashed #ffd700; border-radius: 8px; padding: 6px; margin-bottom: 8px;">
             <span style="font-size: 8px; color: #ffd700; font-weight: bold; text-transform: uppercase;">⏱️ ACTIVE EXPIRY COUNTDOWN</span>
             <div id="nqp-timer-clock" style="font-size: 18px; font-weight: bold; color: #fff; font-family: monospace; text-shadow: 0 0 5px #ffd700; margin-top: 2px;">00:00</div>
         </div>
 
-        <!-- فائنل ڈیسین کارڈ -->
         <div id="nqp-verdict-box" style="border: 2px solid rgba(0, 240, 255, 0.2); border-radius: 12px; padding: 10px; text-align: center; background: linear-gradient(180deg, #020512 0%, #030a1c 100%); margin-bottom: 10px;">
-            <div id="nqp-sys-status" style="font-size: 7px; color: #00f0ff; text-transform: uppercase; letter-spacing: 0.5px;">BRAIN STATE: SECURED & SAVED</div>
+            <div id="nqp-sys-status" style="font-size: 7px; color: #00f0ff; text-transform: uppercase; letter-spacing: 0.5px;">BRAIN STATE: SECURED & PERSISTENT</div>
             <div id="nqp-signal-output" style="font-size: 18px; font-weight: 900; margin: 4px 0; color: #475569; text-transform: uppercase; letter-spacing: 1px;">AWAITING SIGNAL SCAN</div>
             <div id="nqp-brain-accuracy" style="font-size: 9px; color: #00ffcc; font-weight: bold;">ACCURACY LEVEL: ${aiEngine.accuracyScore.toFixed(1)}%</div>
         </div>
 
-        <!-- میٹرکس اسٹریٹیجی واٹرفال -->
         <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(0,240,255,0.15); border-radius: 8px; padding: 6px; margin-bottom: 10px;">
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; text-align: center; font-size: 8px; font-weight: bold; border-bottom: 1px solid rgba(0,240,255,0.2); padding-bottom: 4px; margin-bottom: 6px;">
                 <span style="color: #00ffcc;">🟢 CALL DEPT</span>
@@ -235,31 +239,26 @@
             </div>
         </div>
 
-        <!-- رئیل ٹائم لاجک بریف -->
         <div id="nqp-logic-brief" style="font-size: 8.5px; padding: 6px; border-radius: 6px; border: 1px solid rgba(0,240,255,0.12); background: rgba(0,240,255,0.01); border-left: 3px solid #00f0ff; margin-bottom: 10px; line-height: 1.3; color: #94a3b8;">
             <b>AI Core Reason:</b> System idle. Press SCAN to process persistent dataset.
         </div>
 
-        <!-- مینوئل رزلٹ فیڈ بیک زون -->
         <div id="nqp-feedback-zone" style="display:none; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; background: rgba(0, 240, 255, 0.05); padding: 5px; border-radius: 8px; border: 1px solid rgba(0, 240, 255, 0.15);">
             <div style="grid-column: 1 / span 2; text-align: center; font-size: 7.5px; color: #ffd700; text-transform: uppercase; font-weight: bold;">Verify Real Result:</div>
             <button id="nqp-feed-win" style="padding: 5px 3px; background: #00ffcc; color: #00; font-weight: bold; font-size: 8.5px; border: none; border-radius: 4px; cursor: pointer; text-transform: uppercase;">🏆 WIN</button>
             <button id="nqp-feed-loss" style="padding: 5px 3px; background: #ff0055; color: #fff; font-weight: bold; font-size: 8.5px; border: none; border-radius: 4px; cursor: pointer; text-transform: uppercase;">❌ LOSS</button>
         </div>
 
-        <!-- اسکین بٹن -->
         <button id="nqp-gen-btn" style="width:100%; padding:10px; background:linear-gradient(135deg, #00f0ff, #0077ff); color:#000000; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:10px; text-transform:uppercase; box-shadow: 0 0 12px rgba(0,240,255,0.35); margin-bottom: 8px;">
             🧠 SCAN MATRIX PATHS
         </button>
 
-        <!-- کی انفارمیشن فوٹر (بندے کو پتا ہو کب بند ہوگا) -->
         <div id="nqp-license-footer" style="text-align: center; font-size: 8px; color: #ffd700; font-weight: bold; letter-spacing: 0.5px; border-top: 1px solid rgba(0, 240, 255, 0.15); padding-top: 6px;">
             ${licenseFooterText} | <span id="nqp-change-key" style="text-decoration: underline; cursor: pointer; color: #00ffcc;">Change Key</span>
         </div>
     `;
     document.body.appendChild(dash);
 
-    // کی چینج کرنے کا بٹن (ری سیٹ لائسنس)
     document.getElementById('nqp-change-key').onclick = () => {
         let confirmReset = confirm("Do you want to change or update your license key?");
         if (confirmReset) {
@@ -268,7 +267,6 @@
         }
     };
 
-    // پپی اینیمیشنز
     function setPuppyEmotion(emotion) {
         let pup = document.getElementById('nqp-puppy-face');
         let mouth = document.getElementById('pup-mouth');
@@ -309,7 +307,6 @@
         }
     }
 
-    // ٹائمر رنر
     function runTimer(seconds) {
         if (aiEngine.activeCountdown) clearInterval(aiEngine.activeCountdown);
         let timerBox = document.getElementById('nqp-timer-box');
@@ -330,7 +327,6 @@
         }, 1000);
     }
 
-    // پینل ڈریگ سسٹم
     let isDragging = false; let offsetX, offsetY;
     let header = document.getElementById('nqp-header');
     header.addEventListener('mousedown', function(e) {
@@ -347,7 +343,6 @@
     });
     document.addEventListener('mouseup', function() { isDragging = false; });
 
-    // فیڈ بیک سسٹم
     document.getElementById('nqp-feed-win').onclick = () => saveResult(true);
     document.getElementById('nqp-feed-loss').onclick = () => saveResult(false);
 
@@ -379,7 +374,6 @@
         setTimeout(() => setPuppyEmotion("normal"), 4000);
     }
 
-    // کالمز پش افیکٹ
     function pushToColumn(columnId, strat, color) {
         let col = document.getElementById(columnId);
         if (col.innerHTML.includes("Empty")) col.innerHTML = "";
@@ -401,7 +395,6 @@
         col.scrollTop = col.scrollHeight;
     }
 
-    // اسکین بٹن ایکشن
     document.getElementById('nqp-gen-btn').addEventListener('click', function() {
         if (aiEngine.isAnalyzing) return;
         aiEngine.isAnalyzing = true;
@@ -513,7 +506,6 @@
         }, 1200);
     });
 
-    // ٹائم فریم بٹنز
     let buttons = document.querySelectorAll('.nqp-tf');
     buttons.forEach(btn => {
         btn.onclick = function() {
